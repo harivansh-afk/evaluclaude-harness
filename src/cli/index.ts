@@ -5,6 +5,9 @@ import { introCommand } from './commands/intro.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { renderCommand } from './commands/render.js';
 import { gradeCommand, listRubricsCommand, calibrateCommand } from './commands/grade.js';
+import { runCommand } from './commands/run.js';
+import { viewCommand, tracesCommand } from './commands/view.js';
+import { uiCommand, evalCommand } from './commands/ui.js';
 
 const program = new Command();
 
@@ -19,5 +22,10 @@ program.addCommand(renderCommand);
 program.addCommand(gradeCommand);
 program.addCommand(listRubricsCommand);
 program.addCommand(calibrateCommand);
+program.addCommand(runCommand);
+program.addCommand(viewCommand);
+program.addCommand(tracesCommand);
+program.addCommand(uiCommand);
+program.addCommand(evalCommand);
 
 program.parse(process.argv);
