@@ -3,26 +3,56 @@ import TypeScriptLang from 'tree-sitter-typescript';
 import { BaseParser } from './base.js';
 import type { ModuleInfo, ExportInfo } from '../types.js';
 
-const { typescript: TypeScript } = TypeScriptLang;
+const { typescript: TypeScript, tsx: TSX } = TypeScriptLang;
 
 export class TypeScriptParser extends BaseParser {
   readonly language = 'typescript';
-  private parser: Parser;
+  
+  private tsParser: Parser;
+  private tsxParser: Parser;
 
   constructor() {
     super();
-    this.parser = new Parser();
-    this.parser.setLanguage(TypeScript);
+    this.tsParser = new Parser();
+    this.tsParser.setLanguage(TypeScript);
+    
+    this.tsxParser = new Parser();
+    this.tsxParser.setLanguage(TSX);
   }
 
   parse(source: string, filePath: string): ModuleInfo {
-    const tree = this.parser.parse(source);
+    const isTsx = filePath.endsWith('.tsx') || filePath.endsWith('.jsx');
+    const parser = isTsx ? this.tsxParser : this.tsParser;
+    
+    let tree: Parser.Tree;
+    try {
+      tree = parser.parse(source);
+    } catch (error) {
+      return this.createEmptyModule(filePath, `Parse error: ${error}`);
+    }
+    
     const rootNode = tree.rootNode;
+    
+    if (rootNode.hasError) {
+      const errorCount = this.countErrors(rootNode);
+      if (errorCount > 10) {
+        return this.createEmptyModule(filePath, `Too many syntax errors (${errorCount})`);
+      }
+    }
 
     const exports: ExportInfo[] = [];
     const imports: string[] = [];
 
-    this.walkNode(rootNode, source, exports, imports, false);
+    try {
+      this.walkNode(rootNode, source, exports, imports, false, 0);
+    } catch (error) {
+      return {
+        path: filePath,
+        exports,
+        imports: [...new Set(imports)],
+        complexity: this.calculateComplexity(exports.length),
+      };
+    }
 
     return {
       path: filePath,
@@ -32,13 +62,34 @@ export class TypeScriptParser extends BaseParser {
     };
   }
 
+  private createEmptyModule(path: string, reason: string): ModuleInfo {
+    return {
+      path,
+      exports: [],
+      imports: [],
+      complexity: 'low',
+    };
+  }
+
+  private countErrors(node: Parser.SyntaxNode): number {
+    let count = node.type === 'ERROR' ? 1 : 0;
+    for (const child of node.children) {
+      count += this.countErrors(child);
+    }
+    return count;
+  }
+
   private walkNode(
     node: Parser.SyntaxNode,
     source: string,
     exports: ExportInfo[],
     imports: string[],
-    isExported: boolean
+    isExported: boolean,
+    depth: number
   ): void {
+    if (depth > 50) return;
+    if (node.type === 'ERROR') return;
+
     switch (node.type) {
       case 'function_declaration':
         exports.push(this.extractFunction(node, source, isExported));
@@ -59,9 +110,8 @@ export class TypeScriptParser extends BaseParser {
         break;
 
       case 'export_statement':
-        // Recurse with isExported = true
         for (const child of node.children) {
-          this.walkNode(child, source, exports, imports, true);
+          this.walkNode(child, source, exports, imports, true, depth + 1);
         }
         break;
 
@@ -70,9 +120,24 @@ export class TypeScriptParser extends BaseParser {
         break;
 
       case 'program':
-        // Recurse into top-level statements
         for (const child of node.children) {
-          this.walkNode(child, source, exports, imports, false);
+          this.walkNode(child, source, exports, imports, false, depth + 1);
+        }
+        break;
+
+      case 'export_clause':
+        for (const child of node.children) {
+          if (child.type === 'export_specifier') {
+            const nameNode = child.childForFieldName('name') || child.firstChild;
+            if (nameNode && nameNode.type === 'identifier') {
+              exports.push({
+                name: this.getText(source, nameNode.startIndex, nameNode.endIndex),
+                kind: 'constant',
+                lineNumber: child.startPosition.row + 1,
+                isExported: true,
+              });
+            }
+          }
         }
         break;
     }
@@ -85,7 +150,6 @@ export class TypeScriptParser extends BaseParser {
 
     const name = nameNode ? this.getText(source, nameNode.startIndex, nameNode.endIndex) : 'unknown';
     
-    // Build signature
     let signature = '';
     if (paramsNode) {
       signature = this.getText(source, paramsNode.startIndex, paramsNode.endIndex);
@@ -94,7 +158,6 @@ export class TypeScriptParser extends BaseParser {
       signature += `: ${this.getText(source, returnTypeNode.startIndex, returnTypeNode.endIndex)}`;
     }
 
-    // Check for async
     const isAsync = node.children.some(c => c.type === 'async');
 
     return {
@@ -111,7 +174,6 @@ export class TypeScriptParser extends BaseParser {
     const nameNode = node.childForFieldName('name');
     const name = nameNode ? this.getText(source, nameNode.startIndex, nameNode.endIndex) : 'unknown';
 
-    // Get heritage clause for extends/implements
     let signature: string | undefined;
     const heritageNode = node.children.find(c => c.type === 'class_heritage');
     if (heritageNode) {
@@ -138,7 +200,6 @@ export class TypeScriptParser extends BaseParser {
         if (nameNode) {
           const name = this.getText(source, nameNode.startIndex, nameNode.endIndex);
           
-          // Check if it's a function expression or arrow function
           const isFunction = valueNode && (
             valueNode.type === 'arrow_function' ||
             valueNode.type === 'function_expression' ||
@@ -176,7 +237,6 @@ export class TypeScriptParser extends BaseParser {
 
     for (const child of node.children) {
       if (child.type === 'string') {
-        // Remove quotes from the import path
         const importPath = this.getText(source, child.startIndex, child.endIndex)
           .replace(/^["']|["']$/g, '');
         imports.push(importPath);

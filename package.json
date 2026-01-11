@@ -26,6 +26,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.4",
     "commander": "^12.1.0",
     "glob": "^10.4.0",
     "inquirer": "^9.2.0",
