@@ -27,15 +27,19 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.4",
+    "@anthropic-ai/sdk": "^0.39.0",
     "commander": "^12.1.0",
     "glob": "^10.4.0",
+    "handlebars": "^4.7.8",
     "inquirer": "^9.2.0",
+    "js-yaml": "^4.1.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-python": "^0.21.0",
     "tree-sitter-typescript": "^0.21.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.7",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.0",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5",
