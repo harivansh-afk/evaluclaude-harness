@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { 
   runTests, 
   formatResults, 
@@ -12,6 +11,17 @@ import {
 import { createTracer, saveTrace } from '../../observability/index.js';
 import { exportToPromptfooFormat } from '../../promptfoo/results-exporter.js';
 import type { EvalSpec } from '../../analyzer/types.js';
+import { 
+  style, 
+  icons, 
+  Spinner, 
+  formatError, 
+  nextSteps, 
+  keyValue, 
+  resultBox,
+  section,
+  formatDuration
+} from '../theme.js';
 
 export const runCommand = new Command('run')
   .description('Run generated tests and collect results')
@@ -28,24 +38,37 @@ export const runCommand = new Command('run')
   .option('--no-trace', 'Disable execution tracing')
   .option('--export-promptfoo', 'Export results in Promptfoo format', false)
   .option('-w, --watch', 'Watch mode (rerun on changes)', false)
+  .addHelpText('after', `
+${style.bold('Examples:')}
+  ${style.command('evaluclaude run')}                        ${style.dim('Run tests from ./tests/generated')}
+  ${style.command('evaluclaude run ./my-tests')}             ${style.dim('Run tests from custom directory')}
+  ${style.command('evaluclaude run -f pytest')}              ${style.dim('Use pytest framework')}
+  ${style.command('evaluclaude run --spec eval-spec.json')}  ${style.dim('Map results to EvalSpec')}
+  ${style.command('evaluclaude run --export-promptfoo')}     ${style.dim('Export for Promptfoo UI')}
+  ${style.command('evaluclaude run --no-sandbox')}           ${style.dim('Disable sandboxing')}
+`)
   .action(async (testDir: string, options) => {
     try {
-      console.log(`\n🧪 Running tests from ${testDir}...\n`);
+      console.log(`\n${icons.test} ${style.bold('Running tests from')} ${style.path(testDir)}\n`);
 
       if (!existsSync(testDir)) {
-        console.error(`Error: Test directory not found: ${testDir}`);
+        console.log(formatError(`Test directory not found: ${testDir}`, [
+          `Create the directory: ${style.command(`mkdir -p ${testDir}`)}`,
+          `Generate tests first: ${style.command('evaluclaude render <spec>')}`,
+          'Check the path is correct'
+        ]));
         process.exit(1);
       }
 
       const framework: TestFramework = options.framework || detectTestFramework(testDir);
-      console.log(`   Framework: ${framework}`);
-      console.log(`   Sandbox: ${options.sandbox ? 'enabled' : 'disabled'}`);
-      console.log(`   Timeout: ${options.timeout}ms`);
+      console.log(keyValue('Framework', style.info(framework), 1));
+      console.log(keyValue('Sandbox', options.sandbox ? style.success('enabled') : style.warning('disabled'), 1));
+      console.log(keyValue('Timeout', style.number(`${options.timeout}ms`), 1));
 
       let spec: EvalSpec | undefined;
       if (options.spec && existsSync(options.spec)) {
         spec = JSON.parse(readFileSync(options.spec, 'utf-8')) as EvalSpec;
-        console.log(`   Spec: ${options.spec} (${spec.scenarios.length} scenarios)`);
+        console.log(keyValue('Spec', `${style.path(options.spec)} ${style.muted(`(${spec.scenarios.length} scenarios)`)}`, 1));
       }
 
       const tracer = options.trace ? createTracer(spec?.repo.name || 'unknown') : null;
@@ -66,7 +89,8 @@ export const runCommand = new Command('run')
         });
       }
 
-      console.log('\n   Running tests...\n');
+      const spinner = new Spinner('Running tests...');
+      spinner.start();
       const startTime = Date.now();
 
       const result = await runTests(
@@ -74,6 +98,14 @@ export const runCommand = new Command('run')
         execOptions,
         options.sandbox ? DEFAULT_SANDBOX_CONFIG : undefined
       );
+
+      const duration = Date.now() - startTime;
+
+      if (result.summary.failed > 0) {
+        spinner.fail(`Tests completed with ${style.error(`${result.summary.failed} failures`)}`);
+      } else {
+        spinner.succeed(`Tests completed in ${style.number(formatDuration(duration))}`);
+      }
 
       if (tracer) {
         tracer.recordExecution({
@@ -94,13 +126,20 @@ export const runCommand = new Command('run')
         }
       }
 
-      console.log(formatResults(result));
+      console.log('\n' + resultBox({
+        passed: result.summary.passed,
+        failed: result.summary.failed,
+        skipped: result.summary.skipped,
+        duration,
+      }));
 
       if (spec) {
         const mappedResults = mapResultsToScenarios(result, spec);
-        console.log(`\n📊 Scenario Coverage:`);
-        console.log(`   Covered:   ${mappedResults.covered}/${spec.scenarios.length}`);
-        console.log(`   Unmapped:  ${mappedResults.unmapped}`);
+        console.log(section('Scenario Coverage'));
+        console.log(keyValue('Covered', `${style.success(String(mappedResults.covered))}/${style.number(String(spec.scenarios.length))}`, 1));
+        if (mappedResults.unmapped > 0) {
+          console.log(keyValue('Unmapped', style.warning(String(mappedResults.unmapped)), 1));
+        }
       }
 
       if (options.output) {
@@ -108,31 +147,40 @@ export const runCommand = new Command('run')
         const { dirname } = await import('path');
         mkdirSync(dirname(options.output), { recursive: true });
         writeFileSync(options.output, JSON.stringify(result, null, 2));
-        console.log(`\n📁 Results saved to: ${options.output}`);
+        console.log(`\n${icons.folder} Results saved to: ${style.path(options.output)}`);
       }
 
-      // Export to Promptfoo format for UI viewing
       if (options.exportPromptfoo) {
         const exportPath = await exportToPromptfooFormat(result, spec, {
           outputDir: '.evaluclaude/results',
           evalId: `eval-${Date.now()}`,
         });
-        console.log(`\n📦 Promptfoo results exported: ${exportPath}`);
-        console.log(`   View with: evaluclaude ui`);
+        console.log(`\n${icons.spec} Promptfoo results exported: ${style.path(exportPath)}`);
       }
 
       if (tracer) {
         const trace = tracer.finalize();
         const tracePath = await saveTrace(trace);
-        console.log(`\n📊 Trace saved: ${tracePath}`);
-        console.log(`   View with: evaluclaude view ${trace.id}`);
+        console.log(`\n${icons.trace} Trace saved: ${style.path(tracePath)}`);
       }
+
+      console.log(nextSteps([
+        { command: 'evaluclaude view <trace-id>', description: 'View execution trace' },
+        { command: 'evaluclaude ui', description: 'Launch interactive results viewer' },
+      ]));
 
       if (result.summary.failed > 0) {
         process.exit(1);
       }
     } catch (error) {
-      console.error('Error running tests:', error instanceof Error ? error.message : error);
+      console.log(formatError(
+        error instanceof Error ? error.message : String(error),
+        [
+          'Check that the test directory exists and contains valid tests',
+          'Ensure the test framework is installed',
+          `Run with ${style.command('--no-sandbox')} if sandbox is causing issues`
+        ]
+      ));
       process.exit(1);
     }
   });

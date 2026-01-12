@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, resolve as resolvePath } from 'path';
 import type { EvalSpec } from '../../analyzer/types.js';
 import { generatePromptfooConfig, generateTestProvider } from '../../promptfoo/index.js';
+import { style, icons, Spinner, formatError, nextSteps, header, keyValue } from '../theme.js';
 
 const EVALUCLAUDE_DIR = '.evaluclaude';
 const CONFIG_FILE = 'promptfooconfig.yaml';
@@ -15,6 +16,16 @@ export const uiCommand = new Command('ui')
   .option('-s, --spec <spec>', 'Path to EvalSpec JSON file')
   .option('--generate', 'Regenerate Promptfoo config from spec')
   .option('--no-open', 'Do not auto-open browser')
+  .addHelpText('after', `
+${style.bold('Examples:')}
+  ${style.command('evaluclaude ui')}                    Launch UI with existing results
+  ${style.command('evaluclaude ui -p 8080')}            Use custom port
+  ${style.command('evaluclaude ui -s spec.json --generate')}  Generate config and launch
+
+${style.bold('Workflow:')}
+  1. Run ${style.command('evaluclaude run --export-promptfoo')} to generate results
+  2. Run ${style.command('evaluclaude ui')} to view them in the dashboard
+`)
   .action(async (options) => {
     try {
       const port = parseInt(options.port, 10);
@@ -23,10 +34,15 @@ export const uiCommand = new Command('ui')
 
       // If spec provided with --generate, create/update Promptfoo config
       if (options.spec && options.generate) {
-        console.log('\n📄 Generating Promptfoo configuration...');
+        const spinner = new Spinner('Generating Promptfoo configuration...');
+        spinner.start();
         
         if (!existsSync(options.spec)) {
-          console.error(`Error: Spec file not found: ${options.spec}`);
+          spinner.fail('Spec file not found');
+          console.log(formatError(`Spec file not found: ${style.path(options.spec)}`, [
+            `Check the file path and try again`,
+            `Generate a spec with: ${style.command('evaluclaude analyze <path>')}`,
+          ]));
           process.exit(1);
         }
 
@@ -42,17 +58,20 @@ export const uiCommand = new Command('ui')
 
         await generateTestProvider(providerPath);
 
-        console.log(`   Config: ${configPath}`);
-        console.log(`   Provider: ${providerPath}`);
+        spinner.succeed('Promptfoo configuration generated');
+        console.log(keyValue('Config', style.path(configPath), 1));
+        console.log(keyValue('Provider', style.path(providerPath), 1));
       }
 
       // Check for existing config, create default if missing
       if (!existsSync(configPath)) {
-        console.log('\n⚠️  No Promptfoo config found.');
-        console.log('   Creating default configuration...\n');
+        console.log(`\n${style.warning(icons.warning)} No Promptfoo config found.`);
         
+        const spinner = new Spinner('Creating default configuration...');
+        spinner.start();
         await createDefaultConfig(configPath, providerPath);
-        console.log(`   Created: ${configPath}`);
+        spinner.succeed('Default configuration created');
+        console.log(keyValue('Created', style.path(configPath), 1));
       }
 
       // Check for results to display
@@ -60,19 +79,27 @@ export const uiCommand = new Command('ui')
       const latestResults = join(resultsDir, 'latest.json');
       
       if (!existsSync(latestResults)) {
-        console.log('\n⚠️  No evaluation results found.');
-        console.log('   Run `evaluclaude run --export-promptfoo` first to generate results.\n');
-        console.log('   Or run the full pipeline:');
-        console.log('   evaluclaude pipeline <path> --promptfoo\n');
+        console.log(formatError('No evaluation results found.', [
+          `Run ${style.command('evaluclaude run --export-promptfoo')} first to generate results`,
+          `Or run the full pipeline: ${style.command('evaluclaude pipeline <path> --promptfoo')}`,
+        ]));
       }
 
-      console.log(`\n🚀 Starting Promptfoo UI on port ${port}...`);
-      console.log(`   Results: ${latestResults}\n`);
+      console.log(header('Launching Promptfoo UI'));
+      console.log(keyValue('Port', style.number(String(port)), 1));
+      console.log(keyValue('Results', style.path(latestResults), 1));
+      console.log('');
+
+      const spinner = new Spinner(`${icons.rocket} Starting Promptfoo UI...`);
+      spinner.start();
 
       // Use promptfoo view with the results file
-      await launchPromptfooView(port, latestResults, options.open);
+      await launchPromptfooView(port, latestResults, options.open, spinner);
     } catch (error) {
-      console.error('Error launching UI:', error instanceof Error ? error.message : error);
+      console.log(formatError(
+        error instanceof Error ? error.message : String(error),
+        ['Check the console output for more details']
+      ));
       process.exit(1);
     }
   });
@@ -85,6 +112,17 @@ export const evalCommand = new Command('eval')
   .option('--view', 'Launch UI after evaluation', false)
   .option('-p, --port <port>', 'Port for UI', '3000')
   .option('--no-cache', 'Disable Promptfoo caching', false)
+  .addHelpText('after', `
+${style.bold('Examples:')}
+  ${style.command('evaluclaude eval -s spec.json')}      Run evals from spec
+  ${style.command('evaluclaude eval -c config.yaml')}    Run with custom config
+  ${style.command('evaluclaude eval -s spec.json --view')}  Run and launch UI
+
+${style.bold('Workflow:')}
+  1. Generate spec: ${style.command('evaluclaude analyze <path> -o spec.json')}
+  2. Run evals: ${style.command('evaluclaude eval -s spec.json')}
+  3. View results: ${style.command('evaluclaude ui')}
+`)
   .action(async (options) => {
     try {
       const configPath = options.config || join(EVALUCLAUDE_DIR, CONFIG_FILE);
@@ -92,10 +130,15 @@ export const evalCommand = new Command('eval')
 
       // Generate config from spec if provided
       if (options.spec) {
-        console.log('\n📄 Generating Promptfoo configuration from spec...');
+        const spinner = new Spinner('Generating Promptfoo configuration from spec...');
+        spinner.start();
         
         if (!existsSync(options.spec)) {
-          console.error(`Error: Spec file not found: ${options.spec}`);
+          spinner.fail('Spec file not found');
+          console.log(formatError(`Spec file not found: ${style.path(options.spec)}`, [
+            `Check the file path and try again`,
+            `Generate a spec with: ${style.command('evaluclaude analyze <path>')}`,
+          ]));
           process.exit(1);
         }
 
@@ -111,34 +154,41 @@ export const evalCommand = new Command('eval')
 
         await generateTestProvider(providerPath);
         
-        console.log(`   Config: ${configPath}`);
-        console.log(`   Provider: ${providerPath}`);
-        console.log(`   Scenarios: ${spec.scenarios.length}`);
+        spinner.succeed('Promptfoo configuration generated');
+        console.log(keyValue('Config', style.path(configPath), 1));
+        console.log(keyValue('Provider', style.path(providerPath), 1));
+        console.log(keyValue('Scenarios', style.number(String(spec.scenarios.length)), 1));
       }
 
       if (!existsSync(configPath)) {
-        console.error(`\nError: Config not found: ${configPath}`);
-        console.log('Run with --spec <file> to generate from EvalSpec, or create config manually.');
+        console.log(formatError(`Config not found: ${style.path(configPath)}`, [
+          `Run with ${style.command('--spec <file>')} to generate from EvalSpec`,
+          `Or create a config manually`,
+        ]));
         process.exit(1);
       }
 
       // Ensure output directory exists
       mkdirSync(options.output, { recursive: true });
 
-      console.log('\n🧪 Running Promptfoo evaluations...');
-      console.log(`   Config: ${configPath}`);
-      console.log(`   Output: ${options.output}\n`);
+      console.log(header('Running Promptfoo Evaluations'));
+      console.log(keyValue('Config', style.path(configPath), 1));
+      console.log(keyValue('Output', style.path(options.output), 1));
+      console.log('');
 
       const outputFile = join(options.output, `eval-${Date.now()}.json`);
 
-      const exitCode = await runPromptfooEval(configPath, outputFile, !options.cache);
+      const spinner = new Spinner(`${icons.test} Running evaluations...`);
+      spinner.start();
+
+      const exitCode = await runPromptfooEval(configPath, outputFile, !options.cache, spinner);
 
       if (exitCode === 0) {
-        console.log(`\n✅ Evaluation complete!`);
-        console.log(`📁 Results: ${outputFile}`);
+        spinner.succeed('Evaluation complete!');
+        console.log(keyValue('Results', style.path(outputFile), 1));
       } else {
-        console.log(`\n⚠️  Evaluation finished with exit code ${exitCode}`);
-        console.log(`📁 Results: ${outputFile}`);
+        spinner.warn(`Evaluation finished with exit code ${exitCode}`);
+        console.log(keyValue('Results', style.path(outputFile), 1));
       }
 
       // List traces generated during evaluation
@@ -147,19 +197,27 @@ export const evalCommand = new Command('eval')
         const { readdirSync } = await import('fs');
         const traces = readdirSync(tracesDir).filter(f => f.endsWith('.json'));
         if (traces.length > 0) {
-          console.log(`\n📊 Traces generated: ${traces.length}`);
-          console.log(`   View with: evaluclaude view --last`);
+          console.log(`\n${icons.trace} ${style.bold('Traces generated:')} ${style.number(String(traces.length))}`);
+          console.log(style.dim(`   View with: ${style.command('evaluclaude view --last')}`));
         }
       }
 
       if (options.view) {
-        console.log(`\n🚀 Launching UI on port ${options.port}...`);
-        await launchPromptfooUI(parseInt(options.port, 10), configPath, true);
+        console.log('');
+        const uiSpinner = new Spinner(`${icons.rocket} Launching UI on port ${options.port}...`);
+        uiSpinner.start();
+        await launchPromptfooUI(parseInt(options.port, 10), configPath, true, uiSpinner);
       } else {
-        console.log(`\n   View results: evaluclaude ui`);
+        console.log(nextSteps([
+          { command: 'evaluclaude ui', description: 'View results in dashboard' },
+          { command: 'evaluclaude view --last', description: 'View latest trace' },
+        ]));
       }
     } catch (error) {
-      console.error('Error running eval:', error instanceof Error ? error.message : error);
+      console.log(formatError(
+        error instanceof Error ? error.message : String(error),
+        ['Check the console output for more details']
+      ));
       process.exit(1);
     }
   });
@@ -170,7 +228,8 @@ export const evalCommand = new Command('eval')
 async function launchPromptfooView(
   port: number,
   resultsFile: string,
-  openBrowser: boolean
+  openBrowser: boolean,
+  spinner?: Spinner
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     // Use 'promptfoo view' which opens the web UI showing results from the output directory
@@ -186,7 +245,11 @@ async function launchPromptfooView(
     // Pass the directory containing results
     args.push(resultsDir);
 
-    console.log(`   Running: npx ${args.join(' ')}\n`);
+    if (spinner) {
+      spinner.succeed(`Promptfoo UI starting on port ${style.number(String(port))}`);
+    }
+    console.log(style.dim(`   Running: npx ${args.join(' ')}`));
+    console.log('');
 
     const child = spawn('npx', args, {
       stdio: 'inherit',
@@ -195,9 +258,10 @@ async function launchPromptfooView(
 
     child.on('error', (error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        console.error('\n❌ Promptfoo not found.');
-        console.error('   Install with: npm install -g promptfoo');
-        console.error('   Or run: npx promptfoo --version\n');
+        console.log(formatError('Promptfoo not found.', [
+          `Install with: ${style.command('npm install -g promptfoo')}`,
+          `Or run: ${style.command('npx promptfoo --version')}`,
+        ]));
       } else {
         reject(error);
       }
@@ -225,7 +289,8 @@ async function launchPromptfooView(
 async function launchPromptfooUI(
   port: number, 
   configPath: string, 
-  openBrowser: boolean
+  openBrowser: boolean,
+  spinner?: Spinner
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = ['promptfoo', 'view', '--port', String(port)];
@@ -240,7 +305,11 @@ async function launchPromptfooUI(
     const configDir = dirname(resolvePath(configPath));
     args.push(configDir);
 
-    console.log(`   Running: npx ${args.join(' ')}\n`);
+    if (spinner) {
+      spinner.succeed(`Promptfoo UI starting on port ${style.number(String(port))}`);
+    }
+    console.log(style.dim(`   Running: npx ${args.join(' ')}`));
+    console.log('');
 
     const child = spawn('npx', args, {
       stdio: 'inherit',
@@ -249,9 +318,10 @@ async function launchPromptfooUI(
 
     child.on('error', (error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        console.error('\n❌ Promptfoo not found.');
-        console.error('   Install with: npm install -g promptfoo');
-        console.error('   Or run: npx promptfoo --version\n');
+        console.log(formatError('Promptfoo not found.', [
+          `Install with: ${style.command('npm install -g promptfoo')}`,
+          `Or run: ${style.command('npx promptfoo --version')}`,
+        ]));
       } else {
         reject(error);
       }
@@ -276,7 +346,8 @@ async function launchPromptfooUI(
 async function runPromptfooEval(
   configPath: string, 
   outputFile: string,
-  noCache: boolean
+  noCache: boolean,
+  spinner?: Spinner
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     const args = [
@@ -290,7 +361,11 @@ async function runPromptfooEval(
       args.push('--no-cache');
     }
 
-    console.log(`   Running: npx ${args.join(' ')}\n`);
+    if (spinner) {
+      spinner.stop();
+    }
+    console.log(style.dim(`   Running: npx ${args.join(' ')}`));
+    console.log('');
 
     const child = spawn('npx', args, {
       stdio: 'inherit',
@@ -299,8 +374,9 @@ async function runPromptfooEval(
 
     child.on('error', (error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        console.error('\n❌ Promptfoo not found.');
-        console.error('   Install with: npm install -g promptfoo\n');
+        console.log(formatError('Promptfoo not found.', [
+          `Install with: ${style.command('npm install -g promptfoo')}`,
+        ]));
         reject(error);
       } else {
         reject(error);
