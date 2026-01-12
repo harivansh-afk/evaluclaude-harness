@@ -1,0 +1,32 @@
+name: documentation
+description: Evaluates quality of code documentation and docstrings
+passingThreshold: 0.65
+
+criteria:
+  - name: completeness
+    weight: 0.35
+    description: Documentation covers all parameters, return values, and exceptions
+    examples:
+      good: "Fully documents args, returns, raises, and includes usage example"
+      bad: "Missing parameter descriptions or return type"
+  
+  - name: accuracy
+    weight: 0.35
+    description: Documentation accurately describes the function's behavior
+    examples:
+      good: "Description matches implementation, types are correct"
+      bad: "Outdated docs that don't match current behavior"
+  
+  - name: examples
+    weight: 0.2
+    description: Includes helpful usage examples
+    examples:
+      good: "Shows common use cases with expected outputs"
+      bad: "No examples or only trivial ones"
+  
+  - name: style
+    weight: 0.1
+    description: Follows project/language documentation conventions
+    examples:
+      good: "Uses standard docstring format (Google, NumPy, or reStructuredText)"
+      bad: "Inconsistent or non-standard format"

@@ -1,0 +1,32 @@
+name: code-quality
+description: Evaluates generated code for quality and maintainability
+passingThreshold: 0.7
+
+criteria:
+  - name: readability
+    weight: 0.3
+    description: Code is easy to read and understand
+    examples:
+      good: "Clear variable names, logical flow, proper indentation"
+      bad: "Single-letter variables, deeply nested logic, inconsistent style"
+  
+  - name: correctness
+    weight: 0.4
+    description: Code correctly implements the intended behavior
+    examples:
+      good: "Handles edge cases, correct algorithm, proper error handling"
+      bad: "Missing edge cases, off-by-one errors, swallowed exceptions"
+  
+  - name: efficiency
+    weight: 0.2
+    description: Code uses appropriate data structures and algorithms
+    examples:
+      good: "O(n) where O(n) is optimal, avoids unnecessary allocations"
+      bad: "O(n²) when O(n) is possible, creates objects in tight loops"
+  
+  - name: maintainability
+    weight: 0.1
+    description: Code is easy to modify and extend
+    examples:
+      good: "Single responsibility, low coupling, clear interfaces"
+      bad: "God functions, tight coupling, magic numbers"

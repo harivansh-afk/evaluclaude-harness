@@ -1,0 +1,25 @@
+name: error-messages
+description: Evaluates quality of error messages
+passingThreshold: 0.6
+
+criteria:
+  - name: clarity
+    weight: 0.4
+    description: Error message clearly explains what went wrong
+    examples:
+      good: "Invalid email format: 'not-an-email' is missing '@' symbol"
+      bad: "Error: validation failed"
+  
+  - name: actionability
+    weight: 0.4
+    description: Error message suggests how to fix the problem
+    examples:
+      good: "File not found. Create the file or check the path spelling."
+      bad: "ENOENT"
+  
+  - name: context
+    weight: 0.2
+    description: Error message includes relevant context (file, line, values)
+    examples:
+      good: "TypeError at line 42 in auth.py: expected str, got int (value=123)"
+      bad: "type error"

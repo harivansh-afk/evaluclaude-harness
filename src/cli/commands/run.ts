@@ -10,6 +10,7 @@ import {
   DEFAULT_SANDBOX_CONFIG 
 } from '../../runners/index.js';
 import { createTracer, saveTrace } from '../../observability/index.js';
+import { exportToPromptfooFormat } from '../../promptfoo/results-exporter.js';
 import type { EvalSpec } from '../../analyzer/types.js';
 
 export const runCommand = new Command('run')
@@ -25,6 +26,7 @@ export const runCommand = new Command('run')
   .option('-o, --output <file>', 'Output results to JSON file')
   .option('--trace', 'Record execution trace', true)
   .option('--no-trace', 'Disable execution tracing')
+  .option('--export-promptfoo', 'Export results in Promptfoo format', false)
   .option('-w, --watch', 'Watch mode (rerun on changes)', false)
   .action(async (testDir: string, options) => {
     try {
@@ -107,6 +109,16 @@ export const runCommand = new Command('run')
         mkdirSync(dirname(options.output), { recursive: true });
         writeFileSync(options.output, JSON.stringify(result, null, 2));
         console.log(`\n📁 Results saved to: ${options.output}`);
+      }
+
+      // Export to Promptfoo format for UI viewing
+      if (options.exportPromptfoo) {
+        const exportPath = await exportToPromptfooFormat(result, spec, {
+          outputDir: '.evaluclaude/results',
+          evalId: `eval-${Date.now()}`,
+        });
+        console.log(`\n📦 Promptfoo results exported: ${exportPath}`);
+        console.log(`   View with: evaluclaude ui`);
       }
 
       if (tracer) {

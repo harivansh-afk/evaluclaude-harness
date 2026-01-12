@@ -73,8 +73,8 @@ export function formatResults(result: ExecutionResult): string {
   lines.push(`   Total:   ${result.summary.total}`);
   lines.push(`   ✅ Passed:  ${result.summary.passed}`);
   lines.push(`   ❌ Failed:  ${result.summary.failed}`);
-  lines.push(`   ⏭️  Skipped: ${result.summary.skipped}`);
-  lines.push(`   ⏱️  Duration: ${result.summary.duration}ms`);
+  lines.push(`   ⏭️  Skipped: ${result.summary.skipped ?? 0}`);
+  lines.push(`   ⏱️  Duration: ${result.summary.duration || 0}ms`);
   
   if (result.errors.length > 0) {
     lines.push('');

@@ -64,7 +64,7 @@ export function formatTrace(trace: EvalTrace, options: Partial<ViewOptions> = {}
   lines.push('─'.repeat(40));
   lines.push(`   ✅ Passed:         ${trace.execution.testsPassed}`);
   lines.push(`   ❌ Failed:         ${trace.execution.testsFailed}`);
-  lines.push(`   ⏭️  Skipped:        ${trace.execution.testsSkipped}`);
+  lines.push(`   ⏭️  Skipped:        ${trace.execution.testsSkipped ?? 0}`);
   lines.push('');
 
   if (opts.showQuestions && trace.analysis.questionsAsked.length > 0) {
