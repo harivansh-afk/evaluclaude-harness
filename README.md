@@ -6,6 +6,36 @@
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 
+```mermaid
+flowchart LR
+    subgraph Input
+        A[Your Codebase]
+    end
+    
+    subgraph Pipeline
+        B[Introspect]
+        C[Analyze]
+        D[Render]
+        E[Run]
+    end
+    
+    subgraph Output
+        F[Test Results]
+        G[Traces]
+    end
+    
+    A --> B
+    B -->|RepoSummary| C
+    C -->|EvalSpec| D
+    D -->|Test Files| E
+    E --> F
+    E --> G
+    
+    B -.-|tree-sitter| B
+    C -.-|Claude| C
+    D -.-|pytest/vitest| D
+```
+
 A CLI tool that uses Claude to understand your codebase and generate real, runnable functional tests. Tree-sitter parses your code structure, Claude generates test specs, and deterministic renderers create the actual tests.
 
 ## Quick Start
@@ -22,15 +52,6 @@ evaluclaude intro .                    # Parse codebase
 evaluclaude analyze . -o spec.json -i  # Generate spec (interactive)
 evaluclaude render spec.json           # Create test files
 evaluclaude run                        # Execute tests
-```
-
-## How It Works
-
-```
-  INTROSPECT          ANALYZE            RENDER             RUN
-  Parse code    ->    Generate     ->    Create test   ->   Execute
-  with tree-sitter    EvalSpec           files (pytest,     & trace
-                      with Claude        vitest, jest)
 ```
 
 ## Commands
